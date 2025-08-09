@@ -1,104 +1,136 @@
 import { create } from "zustand";
 import {
-  showAllAppointments,
+  showAllAppointmentsByDate,
   showAppointmentsByStatus,
-  showAppointmentDetails,
-  showPatientAppointments,
-  cancelAppointment,
   showAppointmentsByType,
+  cancelAppointment,
+  showAppointmentResults,
 } from "../../api/doctor/appointments";
 
-export const useDoctorAppointmentsStore = create((set) => ({
-  appointments: [],
+export const useAppointmentsStore = create((set) => ({
+  allAppointments: [],
+  filteredAppointments: [],
   loading: false,
   error: null,
-  filters: {
-    status: "",
-    type: "",
-    showFilters: false,
-  },
-  setFilters: (filterType, value) =>
-    set((state) => ({
-      filters: {
-        ...state.filters,
-        [filterType]: value,
-      },
-    })),
-  clearFilters: () =>
-    set({
-      filters: {
-        status: "",
-        type: "",
-        showFilters: false,
-      },
-    }),
-  fetchAllAppointments: async () => {
+  currentMonthYear: null, // To track the currently viewed month-year
+
+  // Fetch all appointments for a specific month-year (MM-YYYY)
+  fetchAllByDate: async (monthYear) => {
     set({ loading: true, error: null });
     try {
-      const data = await showAllAppointments();
-      set({ appointments: data.data });
-    } catch {
-      set({ error: "Failed to load appointments" });
-    } finally {
-      set({ loading: false });
+      const data = await showAllAppointmentsByDate(monthYear);
+      set({
+        allAppointments: data,
+        currentMonthYear: monthYear,
+        loading: false,
+      });
+    } catch (error) {
+      set({
+        error: error.message || "Failed to fetch appointments",
+        loading: false,
+      });
     }
   },
-  fetchAppointmentsByStatus: async (status) => {
+
+  // Filter appointments by status for the current month-year
+  fetchByStatus: async (status, date) => {
+    const state = useAppointmentsStore.getState();
+    if (!state.currentMonthYear) {
+      set({ error: "No month selected" });
+      return;
+    }
+
     set({ loading: true, error: null });
     try {
-      const data = await showAppointmentsByStatus(status);
-      set({ appointments: data.data });
-    } catch {
-      set({ error: "Failed to filter appointments by status" });
-    } finally {
-      set({ loading: false });
+      const data = await showAppointmentsByStatus(status, date);
+      set({
+        filteredAppointments: data,
+        loading: false,
+      });
+    } catch (error) {
+      set({
+        error: error.message || "Failed to fetch appointments by status",
+        loading: false,
+      });
     }
   },
-  fetchAppointmentsByType: async (status, type) => {
+
+  // Filter appointments by type for the current month-year
+  fetchByType: async (status, type, date) => {
+    const state = useAppointmentsStore.getState();
+    if (!state.currentMonthYear) {
+      set({ error: "No month selected" });
+      return;
+    }
+
     set({ loading: true, error: null });
     try {
-      const data = await showAppointmentsByType(status, type);
-      set({ appointments: data.data });
-    } catch {
-      set({ error: "Failed to filter appointments by type" });
-    } finally {
-      set({ loading: false });
+      const data = await showAppointmentsByType(status, type, date);
+      set({
+        filteredAppointments: data,
+        loading: false,
+      });
+    } catch (error) {
+      set({
+        error: error.message || "Failed to fetch appointments by type",
+        loading: false,
+      });
     }
   },
-  fetchAppointmentDetails: async (appointment_id) => {
+
+  // Cancel an appointment
+  cancelAppointment: async (id) => {
     set({ loading: true, error: null });
     try {
-      const data = await showAppointmentDetails(appointment_id);
+      await cancelAppointment(id);
+
+      // Update both allAppointments and filteredAppointments
+      const state = useAppointmentsStore.getState();
+      const updatedAll = state.allAppointments.map((apt) =>
+        apt.id === id ? { ...apt, status: "cancelled" } : apt
+      );
+      const updatedFiltered = state.filteredAppointments.map((apt) =>
+        apt.id === id ? { ...apt, status: "cancelled" } : apt
+      );
+
+      set({
+        allAppointments: updatedAll,
+        filteredAppointments: updatedFiltered,
+        loading: false,
+      });
+
+      return true;
+    } catch (error) {
+      set({
+        error: error.message || "Failed to cancel appointment",
+        loading: false,
+      });
+      return false;
+    }
+  },
+  // Clear all filters
+  clearFilters: () => {
+    set({ filteredAppointments: [] });
+  },
+
+  // Change current month-year view
+  setCurrentMonthYear: (monthYear) => {
+    set({ currentMonthYear: monthYear });
+  },
+
+  // Show appointment results by appointment_id
+  showAppointmentResults: async (appointment_id) => {
+    set({ loading: true, error: null });
+    try {
+      const data = await showAppointmentResults(appointment_id);
+      set({ loading: false });
       return data;
-    } catch {
-      set({ error: "Failed to fetch appointment details" });
+    } catch (error) {
+      set({
+        error: error.message || "Failed to fetch appointment results",
+        loading: false,
+      });
       return null;
-    } finally {
-      set({ loading: false });
-    }
-  },
-  fetchPatientAppointments: async (patient_id) => {
-    set({ loading: true, error: null });
-    try {
-      const data = await showPatientAppointments(patient_id);
-      return data;
-    } catch {
-      set({ error: "Failed to fetch patient appointments" });
-      return null;
-    } finally {
-      set({ loading: false });
-    }
-  },
-  cancelAppointment: async (reservation_id) => {
-    set({ loading: true, error: null });
-    try {
-      const data = await cancelAppointment(reservation_id);
-      return data;
-    } catch {
-      set({ error: "Failed to cancel appointment" });
-      return null;
-    } finally {
-      set({ loading: false });
     }
   },
 }));
